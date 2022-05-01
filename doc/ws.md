@@ -24,6 +24,7 @@
   - [Event: 'open'](#event-open)
   - [Event: 'ping'](#event-ping)
   - [Event: 'pong'](#event-pong)
+  - [Event: 'redirect'](#event-redirect)
   - [Event: 'unexpected-response'](#event-unexpected-response)
   - [Event: 'upgrade'](#event-upgrade)
   - [websocket.addEventListener(type, listener[, options])](#websocketaddeventlistenertype-listener-options)
@@ -31,15 +32,18 @@
   - [websocket.bufferedAmount](#websocketbufferedamount)
   - [websocket.close([code[, reason]])](#websocketclosecode-reason)
   - [websocket.extensions](#websocketextensions)
+  - [websocket.isPaused](#websocketispaused)
   - [websocket.onclose](#websocketonclose)
   - [websocket.onerror](#websocketonerror)
   - [websocket.onmessage](#websocketonmessage)
   - [websocket.onopen](#websocketonopen)
+  - [websocket.pause()](#websocketpause)
   - [websocket.ping([data[, mask]][, callback])](#websocketpingdata-mask-callback)
   - [websocket.pong([data[, mask]][, callback])](#websocketpongdata-mask-callback)
   - [websocket.protocol](#websocketprotocol)
   - [websocket.readyState](#websocketreadystate)
   - [websocket.removeEventListener(type, listener)](#websocketremoveeventlistenertype-listener)
+  - [websocket.resume()](#websocketresume)
   - [websocket.send(data[, options][, callback])](#websocketsenddata-options-callback)
   - [websocket.terminate()](#websocketterminate)
   - [websocket.url](#websocketurl)
@@ -69,7 +73,8 @@ This class represents a WebSocket server. It extends the `EventEmitter`.
   - `handleProtocols` {Function} A function which can be used to handle the
     WebSocket subprotocols. See description below.
   - `host` {String} The hostname where to bind the server.
-  - `maxPayload` {Number} The maximum allowed message size in bytes.
+  - `maxPayload` {Number} The maximum allowed message size in bytes. Defaults to
+    100 MiB (104857600 bytes).
   - `noServer` {Boolean} Enable no server mode.
   - `path` {String} Accept only connections matching this path.
   - `perMessageDeflate` {Boolean|Object} Enable/disable permessage-deflate.
@@ -81,6 +86,8 @@ This class represents a WebSocket server. It extends the `EventEmitter`.
   - `verifyClient` {Function} A function which can be used to validate incoming
     connections. See description below. (Usage is discouraged: see
     [Issue #337](https://github.com/websockets/ws/issues/377#issuecomment-462152231))
+  - `WebSocket` {Function} Specifies the `WebSocket` class to be used. It must
+    be extended from the original `WebSocket`. Defaults to `WebSocket`.
 - `callback` {Function}
 
 Create a new server instance. One and only one of `port`, `server` or `noServer`
@@ -88,7 +95,7 @@ must be provided or an error is thrown. An HTTP server is automatically created,
 started, and used if `port` is set. To use an external HTTP/S server instead,
 specify only `server` or `noServer`. In this case the HTTP/S server must be
 started manually. The "noServer" mode allows the WebSocket server to be
-completly detached from the HTTP/S server. This makes it possible, for example,
+completely detached from the HTTP/S server. This makes it possible, for example,
 to share a single HTTP/S server between multiple WebSocket servers.
 
 > **NOTE:** Use of `verifyClient` is discouraged. Rather handle client
@@ -96,7 +103,7 @@ to share a single HTTP/S server between multiple WebSocket servers.
 > more details.
 
 If `verifyClient` is not set then the handshake is automatically accepted. If it
-is provided with a single argument then that is:
+has a single parameter then `ws` will invoke it with the following argument:
 
 - `info` {Object}
   - `origin` {String} The value in the Origin header indicated by the client.
@@ -107,7 +114,8 @@ is provided with a single argument then that is:
 The return value (`Boolean`) of the function determines whether or not to accept
 the handshake.
 
-if `verifyClient` is provided with two arguments then those are:
+If `verifyClient` has two parameters then `ws` will invoke it with the following
+arguments:
 
 - `info` {Object} Same as above.
 - `cb` {Function} A callback that must be called by the user upon inspection of
@@ -267,9 +275,14 @@ This class represents a WebSocket. It extends the `EventEmitter`.
 - `options` {Object}
   - `followRedirects` {Boolean} Whether or not to follow redirects. Defaults to
     `false`.
+  - `generateMask` {Function} The function used to generate the masking key. It
+    takes a `Buffer` that must be filled synchronously and is called before a
+    message is sent, for each message. By default the buffer is filled with
+    cryptographically strong random bytes.
   - `handshakeTimeout` {Number} Timeout in milliseconds for the handshake
     request. This is reset after every redirection.
-  - `maxPayload` {Number} The maximum allowed message size in bytes.
+  - `maxPayload` {Number} The maximum allowed message size in bytes. Defaults to
+    100 MiB (104857600 bytes).
   - `maxRedirects` {Number} The maximum number of redirects allowed. Defaults
     to 10.
   - `origin` {String} Value of the `Origin` or `Sec-WebSocket-Origin` header
@@ -279,7 +292,7 @@ This class represents a WebSocket. It extends the `EventEmitter`.
   - `skipUTF8Validation` {Boolean} Specifies whether or not to skip UTF-8
     validation for text and close messages. Defaults to `false`. Set to `true`
     only if the server is trusted.
-  - Any other option allowed in [http.request()][] or [https.request()][].
+  - Any other option allowed in [`http.request()`][] or [`https.request()`][].
     Options given do not have any effect if parsed from the URL given with the
     `address` parameter.
 
@@ -349,6 +362,19 @@ Emitted when a ping is received from the server.
 
 Emitted when a pong is received from the server.
 
+### Event: 'redirect'
+
+- `url` {String}
+- `request` {http.ClientRequest}
+
+Emitted before a redirect is followed. `url` is the redirect URL. `request` is
+the HTTP GET request with the headers queued. This event gives the ability to
+inspect confidential headers and remove them on a per-redirect basis using the
+[`request.getHeader()`][] and [`request.removeHeader()`][] API. The `request`
+object should be used only for this purpose. When there is at least one listener
+for this event, no header is removed by default, even if the redirect is to a
+different domain.
+
 ### Event: 'unexpected-response'
 
 - `request` {http.ClientRequest}
@@ -409,6 +435,12 @@ following ways:
 
 Initiate a closing handshake.
 
+### websocket.isPaused
+
+- {Boolean}
+
+Indicates whether the websocket is paused.
+
 ### websocket.extensions
 
 - {Object}
@@ -443,6 +475,12 @@ listener receives a `MessageEvent` named "message".
 An event listener to be called when the connection is established. The listener
 receives an `OpenEvent` named "open".
 
+### websocket.pause()
+
+Pause the websocket causing it to stop emitting events. Some events can still be
+emitted after this is called, until all buffered data is consumed. This method
+is a noop if the ready state is `CONNECTING` or `CLOSED`.
+
 ### websocket.ping([data[, mask]][, callback])
 
 - `data` {Array|Number|Object|String|ArrayBuffer|Buffer|DataView|TypedArray} The
@@ -472,6 +510,11 @@ Send a pong. This method throws an error if the ready state is `CONNECTING`.
 - {String}
 
 The subprotocol selected by the server.
+
+### websocket.resume()
+
+Make a paused socket resume emitting events. This method is a noop if the ready
+state is `CONNECTING` or `CLOSED`.
 
 ### websocket.readyState
 
@@ -510,7 +553,7 @@ state is `CONNECTING`.
 
 ### websocket.terminate()
 
-Forcibly close the connection. Internally this calls [socket.destroy()][].
+Forcibly close the connection. Internally this calls [`socket.destroy()`][].
 
 ### websocket.url
 
@@ -581,11 +624,14 @@ as configured by the `maxPayload` option.
 [concurrency-limit]: https://github.com/websockets/ws/issues/1202
 [duplex-options]:
   https://nodejs.org/api/stream.html#stream_new_stream_duplex_options
-[http.request()]:
+[`http.request()`]:
   https://nodejs.org/api/http.html#http_http_request_options_callback
-[https.request()]:
+[`https.request()`]:
   https://nodejs.org/api/https.html#https_https_request_options_callback
 [permessage-deflate]:
   https://tools.ietf.org/html/draft-ietf-hybi-permessage-compression-19
-[socket.destroy()]: https://nodejs.org/api/net.html#net_socket_destroy_error
+[`request.getheader()`]: https://nodejs.org/api/http.html#requestgetheadername
+[`request.removeheader()`]:
+  https://nodejs.org/api/http.html#requestremoveheadername
+[`socket.destroy()`]: https://nodejs.org/api/net.html#net_socket_destroy_error
 [zlib-options]: https://nodejs.org/api/zlib.html#zlib_class_options
